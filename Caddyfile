@@ -21,7 +21,7 @@ factory.rjelka.de {
     }
 
     # OPC UA Server HTTP API (fuer Control Panel JS)
-    handle_path /api/* {
+    handle /api/* {
         reverse_proxy opcua-server:3001
     }
 

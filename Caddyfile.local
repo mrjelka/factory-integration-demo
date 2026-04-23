@@ -9,7 +9,7 @@
         reverse_proxy trigger-ui:8080
     }
 
-    handle_path /api/* {
+    handle /api/* {
         reverse_proxy opcua-server:3001
     }
 
