@@ -1,0 +1,49 @@
+# Caddyfile for Factory Integration Demo
+#
+# Anpassen: factory.rjelka.de durch deine tatsaechliche Domain ersetzen.
+# Caddy holt automatisch ein Let's Encrypt Zertifikat.
+#
+# Struktur:
+#   /           -> Landing Page (statisch)
+#   /control    -> Control Panel (FastAPI, Port 8080)
+#   /grafana/*  -> Grafana Dashboard (Port 3000)
+#   /influx/*   -> InfluxDB UI (Port 8086, optional)
+#   /api/*      -> OPC UA Server HTTP API (Port 3001)
+
+factory.rjelka.de {
+    # Landing Page (statisch)
+    root * /srv/landing
+    file_server
+
+    # Control Panel
+    handle_path /control* {
+        reverse_proxy trigger-ui:8080
+    }
+
+    # OPC UA Server HTTP API (fuer Control Panel JS)
+    handle_path /api/* {
+        reverse_proxy opcua-server:3001
+    }
+
+    # Grafana (mit Sub-Path)
+    handle /grafana* {
+        reverse_proxy grafana:3000
+    }
+
+    # InfluxDB (optional, kann entfernt werden)
+    handle_path /influx* {
+        reverse_proxy influxdb:8086
+    }
+
+    # Security Headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log
+    }
+}

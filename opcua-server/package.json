@@ -1,0 +1,12 @@
+{
+  "name": "opcua-factory-server",
+  "version": "1.0.0",
+  "description": "Simulated OPC UA factory server for demo",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "node-opcua": "^2.128.0"
+  }
+}

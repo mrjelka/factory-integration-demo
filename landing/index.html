@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factory Integration Demo | Marek Rjelka</title>
+<meta name="description" content="Simulierte Fertigungslinie mit OPC UA, MQTT, InfluxDB und Grafana. Live-Demo einer industriellen Integrationspipeline.">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07090f;
+    --surface: #0d1117;
+    --surface-2: #151b28;
+    --surface-3: #1c2436;
+    --border: #253049;
+    --border-light: #2f3f5e;
+    --text: #dfe6f0;
+    --text-dim: #6b7a96;
+    --text-muted: #3e4d66;
+    --accent: #3b9eff;
+    --accent-dim: rgba(59, 158, 255, 0.12);
+    --green: #2dd4a0;
+    --green-dim: rgba(45, 212, 160, 0.12);
+    --amber: #f0a030;
+    --red: #ef5050;
+    --font-mono: 'DM Mono', monospace;
+    --font-sans: 'Outfit', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* --- Grain overlay --- */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* --- Grid lines background --- */
+  .grid-bg {
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 80px 80px;
+    opacity: 0.07;
+    pointer-events: none;
+  }
+
+  /* --- Container --- */
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 32px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* --- Header --- */
+  header {
+    padding: 48px 0 0;
+  }
+
+  .header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 80px;
+  }
+
+  .logo {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .header-links {
+    display: flex;
+    gap: 24px;
+  }
+
+  .header-links a {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    text-decoration: none;
+    letter-spacing: 0.5px;
+    transition: color 0.2s;
+  }
+
+  .header-links a:hover { color: var(--accent); }
+
+  /* --- Hero --- */
+  .hero {
+    margin-bottom: 80px;
+  }
+
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--accent);
+    margin-bottom: 20px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease forwards;
+  }
+
+  .hero h1 {
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+    margin-bottom: 24px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.1s forwards;
+  }
+
+  .hero h1 .highlight {
+    color: var(--accent);
+  }
+
+  .hero-desc {
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    max-width: 600px;
+    font-weight: 300;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.2s forwards;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 14px;
+    margin-top: 40px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.3s forwards;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 14px 28px;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+
+  .btn-primary:hover {
+    background: #5db3ff;
+    border-color: #5db3ff;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 30px rgba(59, 158, 255, 0.25);
+  }
+
+  .btn-secondary {
+    background: var(--surface-2);
+    color: var(--text);
+    border-color: var(--border);
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-1px);
+  }
+
+  .btn-icon {
+    font-size: 16px;
+  }
+
+  /* --- Architecture --- */
+  .section {
+    margin-bottom: 80px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.4s forwards;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--text-muted);
+    margin-bottom: 28px;
+  }
+
+  .arch-diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    overflow-x: auto;
+  }
+
+  .arch-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+    min-width: 600px;
+  }
+
+  .arch-node {
+    text-align: center;
+    padding: 20px 16px;
+    min-width: 120px;
+  }
+
+  .arch-node-box {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 14px;
+    margin-bottom: 8px;
+    transition: border-color 0.3s;
+  }
+
+  .arch-node:hover .arch-node-box {
+    border-color: var(--accent);
+  }
+
+  .arch-node-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .arch-node-tech {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .arch-node-port {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 6px;
+  }
+
+  .arch-arrow {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    color: var(--border-light);
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+
+  /* --- Tech stack --- */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  .stack-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    transition: border-color 0.3s, transform 0.2s;
+  }
+
+  .stack-item:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .stack-protocol {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  .stack-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    font-weight: 300;
+  }
+
+  /* --- What it shows --- */
+  .features-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 600px) {
+    .features-list { grid-template-columns: 1fr; }
+  }
+
+  .feature {
+    display: flex;
+    gap: 14px;
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: border-color 0.3s;
+  }
+
+  .feature:hover { border-color: var(--green); }
+
+  .feature-num {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    width: 28px;
+  }
+
+  .feature-title {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .feature-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    font-weight: 300;
+  }
+
+  /* --- Footer --- */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 0;
+    margin-top: 40px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.6s forwards;
+  }
+
+  .footer-grid {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+
+  .footer-name {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 2px;
+  }
+
+  .footer-title {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .footer-links {
+    display: flex;
+    gap: 20px;
+  }
+
+  .footer-links a {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .footer-links a:hover { color: var(--accent); }
+
+  /* --- Status indicator --- */
+  .live-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 6px;
+    animation: blink 2s infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* --- Responsive --- */
+  @media (max-width: 700px) {
+    .header-bar { flex-direction: column; gap: 16px; align-items: flex-start; }
+    .arch-diagram { padding: 20px; }
+    .hero { margin-bottom: 60px; }
+    .section { margin-bottom: 60px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+
+<div class="container">
+  <header>
+    <div class="header-bar">
+      <div class="logo"><span>&gt;</span> marek rjelka <span>/</span> factory-demo</div>
+      <div class="header-links">
+        <a href="https://linkedin.com/in/marek-rjelka">LinkedIn</a>
+        <a href="https://github.com/mrjelka/factory-integration-demo">GitHub</a>
+        <a href="mailto:marek@rjleka.de">Kontakt</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-label"><span class="live-dot"></span> Live Demo</div>
+    <h1>Industrielle Integration.<br><span class="highlight">Vom Protokoll bis zum Dashboard.</span></h1>
+    <p class="hero-desc">
+      Simulierte Fertigungslinie mit OPC UA Server, MQTT Event-Bus, InfluxDB Zeitreihen und Grafana Monitoring.
+      Komplett containerisiert, ein Befehl zum Starten.
+    </p>
+    <div class="hero-actions">
+      <a href="/control" class="btn btn-primary"><span class="btn-icon">&#9881;</span> Control Panel</a>
+      <a href="/grafana/d/factory-demo" class="btn btn-secondary"><span class="btn-icon">&#9636;</span> Grafana Dashboard</a>
+      <a href="https://github.com/marek-rjelka/factory-integration-demo" class="btn btn-secondary"><span class="btn-icon">&lt;/&gt;</span> Source Code</a>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-label">Architektur</div>
+    <div class="arch-diagram">
+      <div class="arch-flow">
+        <div class="arch-node">
+          <div class="arch-node-box">
+            <div class="arch-node-name">OPC UA Server</div>
+            <div class="arch-node-tech">node-opcua</div>
+          </div>
+          <div class="arch-node-port">:4840</div>
+        </div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node">
+          <div class="arch-node-box">
+            <div class="arch-node-name">Data Bridge</div>
+            <div class="arch-node-tech">Node.js</div>
+          </div>
+        </div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node">
+          <div class="arch-node-box">
+            <div class="arch-node-name">MQTT</div>
+            <div class="arch-node-tech">Mosquitto</div>
+          </div>
+          <div class="arch-node-port">:1883</div>
+        </div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node">
+          <div class="arch-node-box">
+            <div class="arch-node-name">InfluxDB</div>
+            <div class="arch-node-tech">Zeitreihen</div>
+          </div>
+          <div class="arch-node-port">:8086</div>
+        </div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node">
+          <div class="arch-node-box">
+            <div class="arch-node-name">Grafana</div>
+            <div class="arch-node-tech">Dashboards</div>
+          </div>
+          <div class="arch-node-port">:3000</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-label">Protokolle &amp; Technologien</div>
+    <div class="stack-grid">
+      <div class="stack-item">
+        <div class="stack-protocol">OPC UA</div>
+        <div class="stack-desc">Industriestandard-Protokoll. Server bildet Drucker, Scanner, Sensor und Produktionslinie als Informationsmodell ab.</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-protocol">MQTT</div>
+        <div class="stack-desc">Leichtgewichtiger Event-Bus. Maschinendaten werden auf Topics publiziert, beliebige Subscriber (MES, SPS, Cloud) konsumieren.</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-protocol">REST / HTTP</div>
+        <div class="stack-desc">Steuerungs-API zum Starten, Stoppen und Auslösen von Fehlerszenarien. Control Panel kommuniziert per REST.</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-protocol">InfluxDB Flux</div>
+        <div class="stack-desc">Zeitreihen-Speicher. Alle OPC-UA-Variablen werden als Messpunkte geschrieben und in Grafana visualisiert.</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-protocol">Docker Compose</div>
+        <div class="stack-desc">Sechs Services, ein Befehl. Gesamte Infrastruktur containerisiert und reproduzierbar.</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-protocol">Node.js + Python</div>
+        <div class="stack-desc">OPC UA Server und Data Bridge in Node.js, Control Panel in Python/FastAPI. Praxisnahe Kombination.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-label">Was die Demo zeigt</div>
+    <div class="features-list">
+      <div class="feature">
+        <div class="feature-num">01</div>
+        <div>
+          <div class="feature-title">OPC UA Informationsmodell</div>
+          <div class="feature-desc">Realistische Modellierung von Drucker, Scanner, Umgebungssensor und Produktionslinie mit Statusvariablen und KPIs.</div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-num">02</div>
+        <div>
+          <div class="feature-title">Durchgängige Event-Pipeline</div>
+          <div class="feature-desc">Drucken, Scannen, Validieren, Protokollieren als automatischer, ereignisgesteuerter Prozess.</div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-num">03</div>
+        <div>
+          <div class="feature-title">Protokollvielfalt</div>
+          <div class="feature-desc">OPC UA, MQTT, HTTP/REST und InfluxDB Flux in einer integrierten Architektur.</div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-num">04</div>
+        <div>
+          <div class="feature-title">Live Monitoring</div>
+          <div class="feature-desc">Grafana-Dashboard mit Temperatur, Vibration, OEE, Zykluszeit und Druck-/Scan-Statistiken.</div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-num">05</div>
+        <div>
+          <div class="feature-title">Fehlerszenarien</div>
+          <div class="feature-desc">Manuell auslösbare Störungen mit automatischer Recovery. Zeigt Fehlerhandling unter realen Bedingungen.</div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="feature-num">06</div>
+        <div>
+          <div class="feature-title">Containerisiert</div>
+          <div class="feature-desc">Komplette Landschaft in Docker Compose. Reproduzierbar, portabel, produktionsbereit.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-grid">
+      <div>
+        <div class="footer-name">Dr.-Ing. Marek Rjelka</div>
+        <div class="footer-title">Freelance Technical Lead | Industrielle Softwareintegration</div>
+      </div>
+      <div class="footer-links">
+        <a href="mailto:marek.rjelka@senodis.io">marek.rjelka@senodis.io</a>
+        <a href="https://linkedin.com/in/marek-rjelka">LinkedIn</a>
+        <a href="https://github.com/marek-rjelka/factory-integration-demo">GitHub</a>
+      </div>
+    </div>
+  </footer>
+</div>
+
+</body>
+</html>

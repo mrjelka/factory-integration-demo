@@ -1,0 +1,14 @@
+{
+  "name": "opcua-data-bridge",
+  "version": "1.0.0",
+  "description": "Bridge between OPC UA, MQTT and InfluxDB",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "node-opcua-client": "^2.128.0",
+    "mqtt": "^5.3.0",
+    "@influxdata/influxdb-client": "^1.33.2"
+  }
+}
