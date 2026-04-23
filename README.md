@@ -1,75 +1,76 @@
+[English](README.md) | [Deutsch](README.de.md)
+
 # Factory Line Integration Demo
 
-Simulierte Fertigungslinie mit OPC UA, MQTT, InfluxDB und Grafana.
-Zeigt eine vollständige Integrationspipeline vom Maschinenprotokoll bis zum Dashboard.
+Simulated factory line with OPC UA, MQTT, InfluxDB, and Grafana.
+Demonstrates a complete integration pipeline from machine protocol to dashboard.
 
-## Architektur
+## Architecture
 
 ```
-┌──────────────────┐     ┌───────────────┐     ┌───────────┐     ┌─────────┐
-│  OPC UA Server   │────▶│  Data Bridge  │────▶│  InfluxDB │────▶│ Grafana │
-│  (node-opcua)    │     │  (Node.js)    │     │           │     │         │
-│                  │     │               │     └───────────┘     └─────────┘
-│  Simuliert:      │     │  Liest OPC UA │            ▲
-│  - Drucker       │     │  Schreibt:    │            │
-│  - Scanner       │     │  - MQTT       │     ┌──────┴───────┐
-│  - Sensor        │     │  - InfluxDB   │     │  Mosquitto   │
-│  - Linie         │     └───────────────┘     │  (MQTT)      │
-│                  │                           └──────────────┘
-│  HTTP API (:3001)│◀────────────────────────────────────────┐
-└──────────────────┘                                         │
-                                                    ┌────────┴────────┐
-                                                    │  Control Panel  │
-                                                    │  (FastAPI :8080)│
-                                                    └─────────────────┘
++------------------+     +---------------+     +-----------+     +---------+
+|  OPC UA Server   |---->|  Data Bridge  |---->|  InfluxDB |---->| Grafana |
+|  (node-opcua)    |     |  (Node.js)    |     |           |     |         |
+|                  |     |               |     +-----------+     +---------+
+|  Simulates:      |     |  Reads OPC UA |            ^
+|  - Printer       |     |  Writes:      |            |
+|  - Scanner       |     |  - MQTT       |     +------+-------+
+|  - Sensor        |     |  - InfluxDB   |     |  Mosquitto   |
+|  - Line          |     +---------------+     |  (MQTT)      |
+|                  |                           +--------------+
+|  HTTP API (:3001)|<----------------------------------------+
++------------------+                                         |
+                                                    +--------+--------+
+                                                    |  Control Panel  |
+                                                    |  (FastAPI :8080)|
+                                                    +-----------------+
 ```
 
-## Komponenten
+## Components
 
-| Service        | Technologie         | Port  | Beschreibung                                    |
+| Service        | Technology          | Port  | Description                                     |
 |----------------|---------------------|-------|-------------------------------------------------|
-| opcua-server   | Node.js, node-opcua | 4840  | OPC UA Server mit simulierten Maschinen         |
-| opcua-server   | Node.js, HTTP       | 3001  | REST API für Status und Steuerung               |
+| opcua-server   | Node.js, node-opcua | 4840  | OPC UA Server with simulated machines           |
+| opcua-server   | Node.js, HTTP       | 3001  | REST API for status and control                 |
 | mosquitto      | Eclipse Mosquitto   | 1883  | MQTT Broker                                     |
-| data-bridge    | Node.js             | -     | Liest OPC UA, publiziert MQTT, schreibt InfluxDB|
-| influxdb       | InfluxDB 2.7        | 8086  | Zeitreihendatenbank                             |
-| grafana        | Grafana 10.4        | 3000  | Dashboards (auto-provisioniert)                 |
-| trigger-ui     | Python, FastAPI     | 8080  | Control Panel zum Steuern der Simulation        |
+| data-bridge    | Node.js             | -     | Reads OPC UA, publishes MQTT, writes InfluxDB   |
+| influxdb       | InfluxDB 2.7        | 8086  | Time series database                            |
+| grafana        | Grafana 10.4        | 3000  | Dashboards (auto-provisioned)                   |
+| trigger-ui     | Python, FastAPI     | 8080  | Control Panel for controlling the simulation    |
 
-## Schnellstart
+## Quick Start
 
 ```bash
 docker compose up --build
 ```
 
-Danach:
+After that:
 
 - **Control Panel:** http://localhost:8080
-- **Grafana Dashboard:** http://localhost:3000/d/factory-demo (Login: admin/admin, oder ohne Login dank Anonymous Access)
+- **Grafana Dashboard:** http://localhost:3000/d/factory-demo (Login: admin/admin, or without login thanks to Anonymous Access)
 - **InfluxDB UI:** http://localhost:8086 (admin/admin12345)
 
-Die Simulation startet automatisch. Über das Control Panel kann die Linie gestoppt/gestartet und Fehler an Drucker oder Scanner ausgelöst werden.
+The simulation starts automatically. You can stop/start the line through the Control Panel and trigger errors on the printer or scanner.
 
-## Was die Demo zeigt
+## What This Demo Shows
 
-1. **OPC UA Server** mit realistischem Informationsmodell (Drucker, Scanner, Umgebungssensor, Produktionslinie)
-2. **Protokollvielfalt:** OPC UA (Maschine), MQTT (Event-Bus), HTTP/REST (Steuerung), InfluxDB Flux (Zeitreihen)
-3. **Event-Pipeline:** Drucken, Scannen, Validieren, Protokollieren als durchgängiger, ereignisgesteuerter Prozess
-4. **Monitoring:** Grafana-Dashboard mit Temperatur, Vibration, OEE, Zykluszeit, Druck-/Scan-Statistiken
-5. **Fehlerszenarien:** Manuell auslösbare Fehler mit automatischer Recovery
-6. **Containerisierung:** Komplette Landschaft in Docker Compose, ein Befehl zum Starten
+1. **OPC UA Server** with realistic information model (Printer, Scanner, Environmental Sensor, Production Line)
+2. **Protocol Diversity:** OPC UA (Machine), MQTT (Event Bus), HTTP/REST (Control), InfluxDB Flux (Time Series)
+3. **Event Pipeline:** Printing, Scanning, Validating, Logging as a continuous, event-driven process
+4. **Monitoring:** Grafana dashboard with temperature, vibration, OEE, cycle time, print/scan statistics
+5. **Error Scenarios:** Manually triggerable errors with automatic recovery
+6. **Containerization:** Complete infrastructure in Docker Compose, one command to start
 
-## Technologie-Stack
+## Technology Stack
 
 - **Node.js** (OPC UA Server, Data Bridge)
 - **Python / FastAPI** (Control Panel)
 - **OPC UA** (node-opcua)
 - **MQTT** (Mosquitto)
-- **InfluxDB** (Zeitreihen)
+- **InfluxDB** (Time Series)
 - **Grafana** (Dashboards)
 - **Docker / Docker Compose**
 
-## Ansprechpartner
+## Contact
 
-Dr.-Ing. Marek Rjelka
-marek.rjelka@senodis.io | linkedin.com/in/marek-rjelka
+Marek Rjelka | linkedin.com/in/marek-rjelka
