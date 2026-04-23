@@ -313,9 +313,7 @@ HTML_PAGE = """<!DOCTYPE html>
 </div>
 
 <script>
-const API = window.location.hostname === 'localhost'
-  ? 'http://localhost:3001'
-  : `http://${window.location.hostname}:3001`;
+const API = window.location.origin;
 
 async function send(path) {
   try { await fetch(API + path, { method: 'POST' }); } catch(e) { console.error(e); }
