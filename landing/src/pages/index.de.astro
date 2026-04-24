@@ -1,0 +1,12 @@
+---
+import Layout from '../layouts/Layout.astro';
+import LandingPage from '../components/LandingPage.astro';
+import type { Content } from '../content/types';
+import content from '../content/de.json';
+
+const t = content as Content;
+---
+
+<Layout lang={t.htmlLang} title={t.meta.title} description={t.meta.description}>
+  <LandingPage t={t} activeLang="de" />
+</Layout>

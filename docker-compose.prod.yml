@@ -4,6 +4,8 @@ version: "3.8"
 # PRODUCTION COMPOSE (mit Caddy Reverse Proxy)
 #
 # Nutzung:
+#   Landing Page bauen (einmalig / nach Aenderung):
+#     cd landing && npm install && npm run build
 #   Lokal testen (ohne Caddy):    docker compose up --build
 #   Produktion (mit Caddy):       docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
 # ============================================================
@@ -18,7 +20,7 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./landing:/srv/landing
+      - ./landing/dist:/srv/landing
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
