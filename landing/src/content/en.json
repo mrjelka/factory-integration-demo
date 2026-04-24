@@ -10,7 +10,7 @@
     "linkedin": "LinkedIn",
     "github": "GitHub",
     "contact": "Contact",
-    "contactEmail": "marek.rjelka@senodis.io"
+    "contactEmail": "marek@rjelka.de"
   },
   "hero": {
     "label": "Live Demo",
@@ -94,6 +94,6 @@
   "footer": {
     "name": "Dr.-Ing. Marek Rjelka",
     "title": "Freelance Technical Lead | Industrial Software Integration",
-    "email": "marek.rjelka@senodis.io"
+    "email": "marek@rjelka.de"
   }
 }
