@@ -2,13 +2,26 @@
 # PRODUCTION COMPOSE (mit Caddy Reverse Proxy)
 #
 # Nutzung:
-#   Landing Page bauen (einmalig / nach Aenderung):
-#     cd landing && npm install && npm run build
 #   Lokal testen (ohne Caddy):    docker compose up --build
 #   Produktion (mit Caddy):       docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# Die Landing Page (Astro) wird vom landing-build Service automatisch
+# vor dem Caddy-Start nach ./landing/dist gebaut.
 # ============================================================
 
 services:
+  # Build the static landing page (Astro) into ./landing/dist.
+  # Runs once at `compose up`, exits 0, then Caddy starts.
+  landing-build:
+    image: node:22-alpine
+    container_name: landing-build
+    working_dir: /build
+    volumes:
+      - ./landing:/build
+      - landing-node-modules:/build/node_modules
+    command: sh -c "npm ci && npm run build"
+    restart: "no"
+
   # Caddy Reverse Proxy (HTTPS, Let's Encrypt)
   caddy:
     image: caddy:2
@@ -18,13 +31,18 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./landing/dist:/srv/landing
+      - ./landing/dist:/srv/landing:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - opcua-server
-      - grafana
-      - trigger-ui
+      landing-build:
+        condition: service_completed_successfully
+      opcua-server:
+        condition: service_started
+      grafana:
+        condition: service_started
+      trigger-ui:
+        condition: service_started
     networks:
       - factory
     restart: unless-stopped
@@ -148,6 +166,7 @@ volumes:
   influxdb-data:
   caddy-data:
   caddy-config:
+  landing-node-modules:
 
 networks:
   factory:
