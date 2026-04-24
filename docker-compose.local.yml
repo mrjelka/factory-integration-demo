@@ -1,8 +1,5 @@
-version: "3.8"
-
 # Overlay for local end-to-end testing of the landing page via Caddy.
 # Usage:
-#   cd landing && npm install && npm run build    # build the landing page (once / after changes)
 #   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 #   open http://localhost:8000
 #
