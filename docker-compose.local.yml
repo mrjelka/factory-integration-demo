@@ -9,44 +9,10 @@
 # Adds Caddy on :8000 and configures Grafana to serve under /grafana/.
 
 services:
-  # Build the static landing page (Astro) into ./landing/dist.
-  # Runs once at `compose up`, exits 0, then Caddy starts.
-  landing-build:
-    image: node:22-alpine
-    container_name: landing-build
-    working_dir: /build
-    volumes:
-      - ./landing:/build
-      - landing-node-modules:/build/node_modules
-    command: sh -c "npm ci && npm run build"
-    restart: "no"
-
-  caddy:
-    image: caddy:2
-    container_name: caddy
-    ports:
-      - "8000:80"
-    volumes:
-      - ./Caddyfile.local:/etc/caddy/Caddyfile
-      - ./landing/dist:/srv/landing:ro
-    depends_on:
-      landing-build:
-        condition: service_completed_successfully
-      trigger-ui:
-        condition: service_started
-      grafana:
-        condition: service_started
-      opcua-server:
-        condition: service_started
-      influxdb:
-        condition: service_started
-    networks:
-      - factory
-
   grafana:
     environment:
-      - GF_SERVER_ROOT_URL=http://localhost:8000/grafana/
-      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_SERVER_ROOT_URL=http://factory.localhost:8000/grafana/
+      # - GF_SERVER_SERVE_FROM_SUB_PATH=true
 
-volumes:
-  landing-node-modules:
+# volumes:
+#   landing-node-modules:
