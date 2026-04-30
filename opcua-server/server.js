@@ -40,6 +40,11 @@ const machines = {
   },
 };
 
+// --- Time-windowed OEE calculation ---
+const WINDOW_SECONDS = 300;
+const productionEvents = [];
+const statusChanges = [];
+
 // --- Event log ---
 const eventLog = [];
 function logEvent(source, type, message) {
@@ -54,12 +59,92 @@ function logEvent(source, type, message) {
   return entry;
 }
 
+// --- Helper functions for OEE calculation ---
+function pushEvent(type) {
+  const now = Date.now();
+  productionEvents.push({ timestamp: now, type });
+  const cutoff = now - WINDOW_SECONDS * 1000;
+  while (productionEvents.length > 0 && productionEvents[0].timestamp < cutoff) {
+    productionEvents.shift();
+  }
+  while (productionEvents.length > 1000) {
+    productionEvents.shift();
+  }
+}
+
+function updateStatusRecord() {
+  const effective =
+    machines.line.status === "running" &&
+    machines.printer.status !== "error" &&
+    machines.scanner.status !== "error"
+      ? "running"
+      : "stopped";
+  const last = statusChanges[statusChanges.length - 1];
+  if (!last || last.status !== effective) {
+    statusChanges.push({ timestamp: Date.now(), status: effective });
+  }
+  const cutoff = Date.now() - WINDOW_SECONDS * 1000;
+  while (statusChanges.length > 1 && statusChanges[1].timestamp < cutoff) {
+    statusChanges.shift();
+  }
+}
+
+function calcAvailability() {
+  const now = Date.now();
+  const windowStart = now - WINDOW_SECONDS * 1000;
+  let statusAtStart = "stopped";
+  for (const sc of statusChanges) {
+    if (sc.timestamp <= windowStart) statusAtStart = sc.status;
+  }
+  const segments = [{ timestamp: windowStart, status: statusAtStart }];
+  for (const sc of statusChanges) {
+    if (sc.timestamp > windowStart && sc.timestamp <= now) {
+      segments.push(sc);
+    }
+  }
+  let downtimeMs = 0;
+  for (let i = 0; i < segments.length; i++) {
+    const end = i + 1 < segments.length ? segments[i + 1].timestamp : now;
+    if (segments[i].status !== "running") {
+      downtimeMs += end - segments[i].timestamp;
+    }
+  }
+  return Math.max(0, (WINDOW_SECONDS * 1000 - downtimeMs) / (WINDOW_SECONDS * 1000));
+}
+
+function calcPerformance() {
+  const cutoff = Date.now() - WINDOW_SECONDS * 1000;
+  const recentParts = productionEvents.filter(
+    (e) =>
+      e.timestamp >= cutoff &&
+      (e.type === "print_ok" || e.type === "print_failed")
+  ).length;
+  const expectedParts = (machines.printer.speed / 3600) * WINDOW_SECONDS;
+  return expectedParts > 0 ? Math.min(1, recentParts / expectedParts) : 0;
+}
+
+function calcQuality() {
+  const cutoff = Date.now() - WINDOW_SECONDS * 1000;
+  const w = productionEvents.filter((e) => e.timestamp >= cutoff);
+  const ok = w.filter((e) => e.type === "print_ok").length;
+  const total = w.filter(
+    (e) => e.type === "print_ok" || e.type === "print_failed"
+  ).length;
+  return total > 0 ? ok / total : 1;
+}
+
+function updateOEE() {
+  machines.line.oee =
+    calcAvailability() * calcPerformance() * calcQuality();
+}
+
 // --- Simulation logic ---
 let simulationInterval = null;
 
 function startSimulation() {
   if (simulationInterval) return;
   machines.line.status = "running";
+  updateStatusRecord();
   logEvent("line", "info", "Production line started");
 
   simulationInterval = setInterval(() => {
@@ -87,6 +172,7 @@ function startSimulation() {
 
         if (success) {
           machines.printer.printsOk++;
+          pushEvent("print_ok");
           machines.printer.lastDMC = dmc;
           machines.printer.status = "idle";
           logEvent("printer", "info", `Print OK: ${dmc}`);
@@ -97,6 +183,7 @@ function startSimulation() {
             machines.scanner.scansTotal++;
             const grade = 2.5 + Math.random() * 1.5;
             const scanOk = grade < 3.5;
+            pushEvent(scanOk ? "scan_ok" : "scan_failed");
 
             if (scanOk) {
               machines.scanner.scansOk++;
@@ -126,32 +213,20 @@ function startSimulation() {
             machines.line.partsProduced++;
             machines.sensor.lightBarrier = false;
 
-            // Update OEE
-            const availability =
-              machines.line.status === "running" ? 0.95 : 0.0;
-            const performance =
-              machines.printer.speed > 0
-                ? Math.min(
-                    1,
-                    machines.line.partsProduced /
-                      (machines.printer.speed * 0.5),
-                  )
-                : 0;
-            const quality =
-              machines.printer.printsTotal > 0
-                ? machines.printer.printsOk / machines.printer.printsTotal
-                : 1;
-            machines.line.oee = availability * performance * quality;
+            updateOEE();
           }, 800);
         } else {
           machines.printer.printsFailed++;
+          pushEvent("print_failed");
           machines.printer.status = "error";
+          updateStatusRecord();
           machines.printer.lastDMC = "";
           logEvent("printer", "error", "Print FAILED, nozzle issue detected");
 
           // Auto-recover after 5s
           setTimeout(() => {
             machines.printer.status = "idle";
+            updateStatusRecord();
             logEvent("printer", "info", "Printer recovered from error");
           }, 5000);
         }
@@ -171,15 +246,18 @@ function stopSimulation() {
   machines.line.status = "stopped";
   machines.printer.status = "idle";
   machines.scanner.status = "idle";
+  updateStatusRecord();
   logEvent("line", "info", "Production line stopped");
 }
 
 function triggerError(machine) {
   if (machines[machine]) {
     machines[machine].status = "error";
+    updateStatusRecord();
     logEvent(machine, "error", `Manual error triggered on ${machine}`);
     setTimeout(() => {
       machines[machine].status = "idle";
+      updateStatusRecord();
       logEvent(machine, "info", `${machine} recovered from manual error`);
     }, 8000);
   }
