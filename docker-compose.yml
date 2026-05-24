@@ -104,6 +104,19 @@ services:
     networks:
       - factory
 
+  # OPC UA address-space browser
+  opcua-browser:
+    build: ./opcua-browser
+    container_name: opcua-browser
+    ports:
+      - "8090:8090"
+    depends_on:
+      - opcua-server
+    environment:
+      - OPCUA_ENDPOINT=opc.tcp://opcua-server:4840/UA/Factory
+    networks:
+      - factory
+
 volumes:
   influxdb-data:
 

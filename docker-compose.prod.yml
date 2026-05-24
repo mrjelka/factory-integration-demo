@@ -77,6 +77,13 @@ services:
       - web
     restart: unless-stopped
 
+  # Dev-only service: assigning a profile here means it is NOT started by the
+  # default prod `up`, while the base compose file (no profile activation)
+  # continues to start it normally for local use.
+  opcua-browser:
+    profiles:
+      - devonly
+
 networks:
   web:
     external: true

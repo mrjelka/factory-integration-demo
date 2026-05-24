@@ -37,6 +37,7 @@ Demonstrates a complete integration pipeline from machine protocol to dashboard.
 | influxdb       | InfluxDB 2.7        | 8086  | Time series database                            |
 | grafana        | Grafana 10.4        | 3000  | Dashboards (auto-provisioned)                   |
 | trigger-ui     | Python, FastAPI     | 8080  | Control Panel for controlling the simulation    |
+| opcua-browser  | Node.js             | 8090  | Web-based OPC UA address-space browser          |
 
 ## Quick Start
 
@@ -47,6 +48,7 @@ docker compose up --build
 After that:
 
 - **Control Panel:** http://localhost:8080
+- **OPC UA Browser:** http://localhost:8090
 - **Grafana Dashboard:** http://localhost:3000/d/factory-demo (Login: admin/admin, or without login thanks to Anonymous Access)
 - **InfluxDB UI:** http://localhost:8086 (admin/admin12345)
 
