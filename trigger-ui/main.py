@@ -1,11 +1,68 @@
+import asyncio
 import os
+import time
+
 import httpx
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 OPCUA_HTTP = os.getenv("OPCUA_HTTP_URL", "http://opcua-server:3001")
+
+# Global rate limit for action endpoints: token bucket shared across all clients.
+# Defaults: long-term ~0.5 actions/sec (one every 2s) with small burst headroom.
+ACTION_BUCKET_CAPACITY = float(os.getenv("ACTION_BUCKET_CAPACITY", "3"))
+ACTION_REFILL_PER_SEC = float(os.getenv("ACTION_REFILL_PER_SEC", "0.5"))
+
+_action_tokens = ACTION_BUCKET_CAPACITY
+_action_last_refill = time.monotonic()
+_action_lock = asyncio.Lock()
+
+# Cache + single-flight for the status endpoint. Multiple concurrent viewer polls
+# share one upstream fetch per TTL window, so OPC UA load is capped regardless of
+# how many people are connected.
+STATUS_CACHE_TTL = float(os.getenv("STATUS_CACHE_TTL", "1.0"))
+
+_status_cache: dict | None = None
+_status_cache_at = 0.0
+_status_fetch_lock = asyncio.Lock()
+
+
+async def _get_status_cached() -> dict:
+    global _status_cache, _status_cache_at
+    now = time.monotonic()
+    if _status_cache is not None and (now - _status_cache_at) < STATUS_CACHE_TTL:
+        return _status_cache
+    async with _status_fetch_lock:
+        now = time.monotonic()
+        if _status_cache is not None and (now - _status_cache_at) < STATUS_CACHE_TTL:
+            return _status_cache
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{OPCUA_HTTP}/api/status")
+            data = resp.json()
+        _status_cache = data
+        _status_cache_at = time.monotonic()
+        return data
+
+
+async def _consume_action_token() -> tuple[bool, float]:
+    """Try to consume one token. Returns (allowed, retry_after_seconds)."""
+    global _action_tokens, _action_last_refill
+    async with _action_lock:
+        now = time.monotonic()
+        elapsed = now - _action_last_refill
+        _action_tokens = min(
+            ACTION_BUCKET_CAPACITY,
+            _action_tokens + elapsed * ACTION_REFILL_PER_SEC,
+        )
+        _action_last_refill = now
+        if _action_tokens >= 1.0:
+            _action_tokens -= 1.0
+            return True, 0.0
+        deficit = 1.0 - _action_tokens
+        return False, deficit / ACTION_REFILL_PER_SEC if ACTION_REFILL_PER_SEC > 0 else 60.0
+
 
 app = FastAPI(title="Factory Control Panel")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -240,6 +297,26 @@ HTML_PAGE = """<!DOCTYPE html>
   }
 
   .arch-label span { color: var(--accent); }
+
+  .toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--amber);
+    color: #000;
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    opacity: 0;
+    transform: translateY(-12px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    z-index: 1000;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
 </style>
 </head>
 <body>
@@ -312,11 +389,28 @@ HTML_PAGE = """<!DOCTYPE html>
   <span>OPC UA Server</span> &rarr; Data Bridge &rarr; <span>MQTT</span> + <span>InfluxDB</span> &rarr; <span>Grafana</span> | Control Panel &rarr; HTTP API &rarr; <span>OPC UA</span>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
 const API = window.location.origin;
 
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
 async function send(path) {
-  try { await fetch(API + path, { method: 'POST' }); } catch(e) { console.error(e); }
+  try {
+    const res = await fetch(API + path, { method: 'POST' });
+    if (res.status === 429) {
+      const retry = res.headers.get('Retry-After') || '?';
+      showToast('Rate limited — try again in ' + retry + 's');
+    }
+  } catch(e) { console.error(e); }
 }
 
 function setDot(id, status) {
@@ -374,9 +468,26 @@ async def index():
 
 @app.post("/api/{path:path}")
 async def proxy_post(path: str):
+    allowed, retry_after = await _consume_action_token()
+    if not allowed:
+        retry_after = max(1, int(retry_after + 0.999))
+        return JSONResponse(
+            status_code=429,
+            headers={"Retry-After": str(retry_after)},
+            content={
+                "error": "rate_limited",
+                "message": "Too many actions across all users. Please wait.",
+                "retry_after": retry_after,
+            },
+        )
     async with httpx.AsyncClient() as client:
         resp = await client.post(f"{OPCUA_HTTP}/api/{path}")
         return resp.json()
+
+
+@app.get("/api/status")
+async def get_status():
+    return await _get_status_cached()
 
 
 @app.get("/api/{path:path}")
